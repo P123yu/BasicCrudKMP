@@ -54,6 +54,13 @@ kotlin {
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
 
+
+
+
+            implementation(compose.materialIconsExtended) // <-- Add this line for icon
+
+
+
             val voyagerVersion = "1.0.0"
 
 //            implementation("cafe.adriel.voyager:voyager-core:${voyagerVersion}")

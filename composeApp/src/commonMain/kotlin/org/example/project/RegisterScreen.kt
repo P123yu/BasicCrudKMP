@@ -30,7 +30,7 @@ import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 
-class RegisterScreen: Screen {
+class RegisterScreen(private val student: Student? = null): Screen {
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.current
@@ -43,6 +43,19 @@ class RegisterScreen: Screen {
 
 
             val screenModel = rememberScreenModel { RegisterScreenModel() }
+
+
+          // update
+
+            // Prefill the fields if editing
+            LaunchedEffect(student) {
+                student?.let {
+                    screenModel.stuName.value = it.stuName
+                    screenModel.stuCity.value = it.stuCity
+                    screenModel.stuMarks.value = it.stuMarks.toString()
+                }
+            }
+
 
             val stuName by screenModel.stuName.collectAsState()
             val stuCity by screenModel.stuCity.collectAsState()
@@ -143,14 +156,37 @@ class RegisterScreen: Screen {
 //                }
 //
 
+//                Button(
+//                    onClick = { screenModel.addStudent() },
+//                    modifier = Modifier
+//                        .fillMaxWidth(0.7f)
+//                        .fillMaxHeight(0.25f),
+//                    colors = ButtonDefaults.buttonColors(containerColor = Color.Blue)
+//                ) {
+//                    Text("Register", color = Color.White, fontSize = 20.sp)
+//                }
+
+
+
                 Button(
-                    onClick = { screenModel.addStudent() },
-                    modifier = Modifier
-                        .fillMaxWidth(0.7f)
-                        .fillMaxHeight(0.25f),
+                    onClick = {
+                        if (student?.id == null) {
+                            screenModel.addStudent()
+                        } else {
+//                            screenModel.updateStudent(student.id)
+                            screenModel.updateStudent(student.id) {
+                                navigator?.pop() // only runs after success
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(0.7f),
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Blue)
                 ) {
-                    Text("Register", color = Color.White, fontSize = 20.sp)
+                    Text(
+                        if (student?.id == null) "Register" else "Update",
+                        color = Color.White,
+                        fontSize = 20.sp
+                    )
                 }
 
 

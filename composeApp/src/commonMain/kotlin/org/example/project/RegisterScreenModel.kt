@@ -107,7 +107,7 @@ class RegisterScreenModel : ScreenModel {
         screenModelScope.launch {
             try {
                 val student = Student(
-                    stuId = null,
+                    id = null,
                     stuName = stuName.value,
                     stuCity = stuCity.value,
                     stuMarks = stuMarks.value.toDoubleOrNull() ?: 0.0
@@ -123,6 +123,7 @@ class RegisterScreenModel : ScreenModel {
                 println("HTTP status: ${response.status}")
                 val saved: Student = response.body()
                 _result.value = "✅ Saved: ${saved.stuName} (${saved.stuCity})"
+                resetForm() // ✅ clear form after creation
                 loadStudents()
             } catch (e: Exception) {
                 _result.value = "❌ Error: ${e.message}"
@@ -165,9 +166,106 @@ class RegisterScreenModel : ScreenModel {
         screenModelScope.launch {   // ✅ correct scope
             try {
                 _students.value = client.get("$baseUrl/getAll").body()
+                _result.value = "Students fetched successfully!"
             } catch (e: Exception) {
-                _result.value = "❌ Error: ${e.message}"
+//                _result.value = "❌ Error: ${e.message}"
+                _result.value = "Failed to fetch students: ${e.message}"
             }
         }
     }
+
+
+
+    // ✅ Delete a student by ID
+    fun deleteStudent(id: Long?) {
+        print("$id rrr")
+        if (id == null) return
+        screenModelScope.launch {
+            try {
+                client.delete("$baseUrl/removeById/$id")
+                _result.value = "✅ Student deleted successfully!"
+
+            } catch (e: Exception) {
+                _result.value = "❌ Failed to delete student: ${e.message}"
+                e.printStackTrace()
+            }
+        }
+    }
+
+
+
+
+//    fun updateStudent(id: Long) {
+//        screenModelScope.launch {
+//            try {
+//                val student = Student(
+//                    id = id,
+//                    stuName = stuName.value,
+//                    stuCity = stuCity.value,
+//                    stuMarks = stuMarks.value.toDoubleOrNull() ?: 0.0
+//                )
+//
+//                // ✅ serialize with explicit type
+//                val jsonBody = Json.encodeToString<Student>(student)
+//                println("Sending student: $jsonBody")
+//
+//                client.put("$baseUrl/put") {
+//                    contentType(ContentType.Application.Json)
+//                    setBody(student)
+//                }
+//
+//                _result.value = "✅ Student updated successfully!"
+//                resetForm() // ✅ clear form after creation
+//                loadStudents()
+//
+//            } catch (e: Exception) {
+//                _result.value = "❌ Failed to update student: ${e.message}"
+//            }
+//        }
+//    }
+
+
+
+    fun updateStudent(id: Long, afterSuccess: () -> Unit) {
+        screenModelScope.launch {
+            try {
+                val student = Student(
+                    id = id,
+                    stuName = stuName.value,
+                    stuCity = stuCity.value,
+                    stuMarks = stuMarks.value.toDoubleOrNull() ?: 0.0
+                )
+
+
+                // ✅ serialize with explicit type
+                val jsonBody = Json.encodeToString<Student>(student)
+                println("Sending student: $jsonBody")
+
+
+                client.put("$baseUrl/put") {
+                    contentType(ContentType.Application.Json)
+                    setBody(student)
+                }
+                _result.value = "✅ Updated successfully!"
+
+//                resetForm() // clear the form
+                afterSuccess() // ✅ only called if try block succeeds
+                loadStudents() // refresh list
+
+            } catch (e: Exception) {
+                _result.value = "❌ Failed to update: ${e.message}"
+                // onSuccess() is NOT called if exception occurs
+            }
+        }
+    }
+
+
+
+
+    fun resetForm() {
+        stuName.value = ""
+        stuCity.value = ""
+        stuMarks.value = ""
+    }
+
 }
