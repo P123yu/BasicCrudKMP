@@ -1,0 +1,721 @@
+
+// Student.kt (updated data class)
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class Student(
+    val id: Long,
+    val stuName: String,
+    val stuCity: String,
+    val stuMarks: Double,
+    val fileName: String? = null,
+    // Note: No 'fileData' field here
+)
+
+
+
+
+// splash same 
+
+
+// API CALL =======================================================================================================================
+
+// register screen model
+
+
+package org.example.project
+
+import cafe.adriel.voyager.core.model.ScreenModel
+import cafe.adriel.voyager.core.model.screenModelScope
+import io.ktor.client.*
+import io.ktor.client.call.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.logging.*
+import io.ktor.client.request.*
+import io.ktor.client.request.forms.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
+import io.ktor.utils.io.core.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+
+class RegisterScreenModel : ScreenModel {
+
+    private val client = HttpClient {
+        install(ContentNegotiation) {
+            json(Json { ignoreUnknownKeys = true })
+        }
+        install(Logging) {  // <-- Logging plugin to see request/response
+            logger = Logger.SIMPLE
+            level = LogLevel.ALL
+        }
+    }
+
+    private val baseUrl = "http://10.0.2.2:5000/student" // Spring Boot backend
+
+    // Form fields
+    val stuName = MutableStateFlow("")
+    val stuCity = MutableStateFlow("")
+    val stuMarks = MutableStateFlow("")
+
+    // Result and students list
+    private val _result = MutableStateFlow("")
+    val result: StateFlow<String> = _result
+
+    private val _students = MutableStateFlow<List<Student>>(emptyList())
+    val students: StateFlow<List<Student>> = _students
+
+    /**
+     * Add student with optional image
+     */
+    // Fix client side `addStudent` function
+    fun addStudent(imageBytes: ByteArray? = null, imageName: String = "upload.jpg") {
+        screenModelScope.launch {
+            try {
+//                val marks = 60.toDoubleOrNull() ?: 0.0
+
+                val response: HttpResponse = client.submitFormWithBinaryData(
+                    url = "$baseUrl/create",
+                    formData = formData {
+                        append("stuName", "abc")
+                        append("stuCity", "def")
+                        append("stuMarks","80")
+
+                        if (imageBytes != null) {
+                            // Correct way: Let Ktor build the headers
+                            // The first argument "image" should match the server's @RequestParam name
+                            append("file", imageBytes, Headers.build {
+                                append(HttpHeaders.ContentType, "image/jpeg")
+                                append(HttpHeaders.ContentDisposition, "filename=\"$imageName\"")
+                            })
+                        }
+                    }
+                )
+
+                // Log backend response
+                val text = response.bodyAsText()
+                println("Response: $text")
+
+                _result.value = if (response.status.isSuccess()) {
+                    "✅ Student created successfully!"
+                } else {
+                    "❌ Failed: ${response.status}"
+                }
+
+                // Reload students list if success
+                if (response.status.isSuccess()){}
+//                    loadStudents()
+
+            } catch (e: Exception) {
+                _result.value = "❌ Error: ${e.message}"
+                e.printStackTrace()
+            }
+        }
+    }
+    /**
+     * Load students list from backend
+     */
+    suspend fun loadImageForStudent(studentId: Long): ByteArray? {
+        return try {
+            val response: HttpResponse = client.get("$baseUrl/view/$studentId")
+            if (response.status.isSuccess()) {
+                response.readBytes()
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+
+    fun resetForm() {
+        stuName.value = ""
+        stuCity.value = ""
+        stuMarks.value = ""
+    }
+}
+
+
+
+// CREATE  ===========================================================================================================
+
+
+// register screen  // for storing or creating other fields with image 
+
+
+package org.example.project
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.core.model.rememberScreenModel
+import com.mohamedrejeb.calf.core.LocalPlatformContext
+import com.mohamedrejeb.calf.io.readByteArray
+import com.mohamedrejeb.calf.picker.FilePickerFileType
+import com.mohamedrejeb.calf.picker.FilePickerSelectionMode
+import com.mohamedrejeb.calf.picker.rememberFilePickerLauncher
+import kotlinx.coroutines.launch
+
+class RegisterScreen : Screen {
+    @Composable
+    override fun Content() {
+        val navigator = LocalNavigator.current
+        val screenModel = rememberScreenModel { RegisterScreenModel() }
+
+        val scope = rememberCoroutineScope()
+        val context = LocalPlatformContext.current
+
+        // keep track of selected file bytes + name
+        var byteArray by remember { mutableStateOf<ByteArray?>(null) }
+        var fileName by remember { mutableStateOf("upload.jpg") }
+
+//        val context = LocalPlatformContext.current
+
+        val pickUpLauncher = rememberFilePickerLauncher(
+            type = FilePickerFileType.Image,
+            selectionMode = FilePickerSelectionMode.Single,
+            onResult = { files ->
+                scope.launch {
+                    files.firstOrNull()?.let { file ->
+                        byteArray = file.readByteArray(context = context)
+                        fileName = "apple"
+                    }
+                }
+            }
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(color = Color.LightGray),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Button(
+                onClick = { pickUpLauncher.launch() },
+                modifier = Modifier
+                    .fillMaxWidth(0.7f)
+                    .fillMaxHeight(0.17f),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Blue)
+            ) {
+                Text("Pick File", color = Color.White, fontSize = 20.sp)
+            }
+
+            Button(
+                onClick = {
+                    scope.launch {
+                        screenModel.addStudent(
+                            imageBytes = byteArray,
+                            imageName = fileName
+                        )
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth(0.7f)
+                    .fillMaxHeight(0.17f),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Green)
+            ) {
+                Text("Upload Student", color = Color.White, fontSize = 20.sp)
+            }
+
+            // Show result feedback
+            val result by screenModel.result.collectAsState()
+            Text(
+                text = result,
+                color = Color.Black,
+                modifier = Modifier.padding(top = 16.dp)
+            )
+        }
+    }
+}
+
+
+// GET =============================================================================================
+
+// login   // just for fetching and displaying image 
+
+
+// springboot 
+
+  @GetMapping("/view/{id}")
+    public ResponseEntity<Resource> viewFile(@PathVariable Long id) {
+        Student student = studentServiceImpl.getById(id);
+
+        Resource resource = new ByteArrayResource(student.getFileData());
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(student.getFileType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.inline()
+                                .filename(student.getFileName())
+                                .build()
+                                .toString())
+                .body(resource);
+    }
+
+
+// KMP
+
+
+//package org.example.project
+//
+//
+//import androidx.compose.foundation.Image
+//import androidx.compose.foundation.background
+//import androidx.compose.foundation.clickable
+//import androidx.compose.foundation.layout.Column
+//import androidx.compose.foundation.layout.Spacer
+//import androidx.compose.foundation.layout.fillMaxHeight
+//import androidx.compose.foundation.layout.fillMaxSize
+//import androidx.compose.foundation.layout.fillMaxWidth
+//import androidx.compose.foundation.shape.RoundedCornerShape
+//import androidx.compose.foundation.text.KeyboardOptions
+//import androidx.compose.material3.Button
+//import androidx.compose.material3.ButtonDefaults
+//import androidx.compose.material3.MaterialTheme
+//import androidx.compose.material3.OutlinedTextField
+//import androidx.compose.material3.Text
+//import androidx.compose.ui.Alignment
+//import androidx.compose.ui.Modifier
+//import androidx.compose.ui.graphics.Color
+//import androidx.compose.ui.unit.sp
+//import androidx.compose.runtime.*
+//import androidx.compose.ui.draw.clip
+//import androidx.compose.ui.text.SpanStyle
+//import androidx.compose.ui.text.buildAnnotatedString
+//import androidx.compose.ui.text.input.KeyboardType
+//import androidx.compose.ui.text.input.PasswordVisualTransformation
+//import androidx.compose.ui.text.withStyle
+//import androidx.compose.ui.unit.dp
+//import cafe.adriel.voyager.core.screen.Screen
+//import cafe.adriel.voyager.navigator.LocalNavigator
+//import org.jetbrains.compose.resources.painterResource
+//import uipractice1.composeapp.generated.resources.Res
+//import uipractice1.composeapp.generated.resources.splash_screen
+//
+//class LoginScreen : Screen {
+//
+//    @Composable
+//    override fun Content() {
+//        val navigator = LocalNavigator.current
+//
+//        MaterialTheme {
+//            var email by remember { mutableStateOf("") }  // state to store input
+//            var password by remember { mutableStateOf("") }  // state to store input
+//
+//            Column(
+//                modifier = Modifier.fillMaxSize()
+//                    .background(color = Color.White),
+//                horizontalAlignment = Alignment.CenterHorizontally,
+//            ) {
+//
+//                Spacer(modifier = Modifier.fillMaxHeight(0.1f))
+//
+//                Text("Welcome Back !", fontSize = 40.sp, color = Color.Blue)
+//
+//                Spacer(modifier = Modifier.fillMaxHeight(0.05f))
+//
+//                Image(
+//                    painter = painterResource(Res.drawable.splash_screen),
+//                    contentDescription = "Splash Screen",
+//                    modifier = Modifier
+//                        .fillMaxWidth(0.5f)  // 50% of parent width
+//                        .clip(RoundedCornerShape(30.dp))
+//                )
+//
+//                Spacer(modifier = Modifier.fillMaxHeight(0.05f))
+//
+//
+//                OutlinedTextField(
+//                    value = email,
+//                    onValueChange = { email = it },
+//                    label = { Text("Email") },
+//                    modifier = Modifier.fillMaxWidth(0.7f) // takes 70% of parent width
+//                )
+//
+//
+//                Spacer(modifier = Modifier.fillMaxHeight(0.05f))
+//
+//                OutlinedTextField(
+//                    value = password,
+//                    onValueChange = { password = it },
+//                    label = { Text("Password") },
+//                    modifier = Modifier.fillMaxWidth(0.7f), // takes 70% of parent width
+//                    visualTransformation = PasswordVisualTransformation(),
+//                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+//                )
+//
+//                Spacer(modifier = Modifier.fillMaxHeight(0.10f))
+//
+//
+//                Button(
+//                    onClick = { },
+//                    modifier = Modifier
+//                        .fillMaxWidth(0.7f)
+//                        .fillMaxHeight(0.25f),
+//                    colors = ButtonDefaults.buttonColors(containerColor = Color.Blue)
+//                ) {
+//                    Text("Login", color = Color.White, fontSize = 20.sp)
+//                }
+//
+//
+//                Spacer(modifier = Modifier.fillMaxHeight(0.10f))
+//
+//
+//                Text(
+//                    text = buildAnnotatedString {
+//                        append("Don't have an account? ")
+//                        withStyle(style = SpanStyle(color = Color.Red)) {
+//                            append("Signup")
+//                        }
+//                    },
+//                    fontSize = 15.sp,
+//                    color = Color.Blue, // default color for the first part
+//                    modifier = Modifier.clickable {
+//                        navigator?.push(RegisterScreen())
+//                    }
+//                )
+//            }
+//        }
+//    }
+//}
+
+
+
+
+//package org.example.project
+//
+//
+//import androidx.compose.foundation.Image
+//import androidx.compose.foundation.background
+//import androidx.compose.foundation.clickable
+//import androidx.compose.foundation.layout.Column
+//import androidx.compose.foundation.layout.Spacer
+//import androidx.compose.foundation.layout.fillMaxHeight
+//import androidx.compose.foundation.layout.fillMaxSize
+//import androidx.compose.foundation.layout.fillMaxWidth
+//import androidx.compose.foundation.shape.RoundedCornerShape
+//import androidx.compose.foundation.text.KeyboardOptions
+//import androidx.compose.material3.Button
+//import androidx.compose.material3.ButtonDefaults
+//import androidx.compose.material3.MaterialTheme
+//import androidx.compose.material3.OutlinedTextField
+//import androidx.compose.material3.Text
+//import androidx.compose.ui.Alignment
+//import androidx.compose.ui.Modifier
+//import androidx.compose.ui.graphics.Color
+//import androidx.compose.ui.unit.sp
+//import androidx.compose.runtime.*
+//import androidx.compose.ui.draw.clip
+//import androidx.compose.ui.text.SpanStyle
+//import androidx.compose.ui.text.buildAnnotatedString
+//import androidx.compose.ui.text.input.KeyboardType
+//import androidx.compose.ui.text.input.PasswordVisualTransformation
+//import androidx.compose.ui.text.withStyle
+//import androidx.compose.ui.unit.dp
+//import cafe.adriel.voyager.core.screen.Screen
+//import cafe.adriel.voyager.navigator.LocalNavigator
+//import org.jetbrains.compose.resources.painterResource
+//import uipractice1.composeapp.generated.resources.Res
+//import uipractice1.composeapp.generated.resources.splash_screen
+//
+//class LoginScreen : Screen {
+//
+//    @Composable
+//    override fun Content() {
+//        val navigator = LocalNavigator.current
+//
+//        MaterialTheme {
+//            var email by remember { mutableStateOf("") }  // state to store input
+//            var password by remember { mutableStateOf("") }  // state to store input
+//
+//            Column(
+//                modifier = Modifier.fillMaxSize()
+//                    .background(color = Color.White),
+//                horizontalAlignment = Alignment.CenterHorizontally,
+//            ) {
+//
+//                Spacer(modifier = Modifier.fillMaxHeight(0.1f))
+//
+//                Text("Welcome Back !", fontSize = 40.sp, color = Color.Blue)
+//
+//                Spacer(modifier = Modifier.fillMaxHeight(0.05f))
+//
+//                Image(
+//                    painter = painterResource(Res.drawable.splash_screen),
+//                    contentDescription = "Splash Screen",
+//                    modifier = Modifier
+//                        .fillMaxWidth(0.5f)  // 50% of parent width
+//                        .clip(RoundedCornerShape(30.dp))
+//                )
+//
+//                Spacer(modifier = Modifier.fillMaxHeight(0.05f))
+//
+//
+//                OutlinedTextField(
+//                    value = email,
+//                    onValueChange = { email = it },
+//                    label = { Text("Email") },
+//                    modifier = Modifier.fillMaxWidth(0.7f) // takes 70% of parent width
+//                )
+//
+//
+//                Spacer(modifier = Modifier.fillMaxHeight(0.05f))
+//
+//                OutlinedTextField(
+//                    value = password,
+//                    onValueChange = { password = it },
+//                    label = { Text("Password") },
+//                    modifier = Modifier.fillMaxWidth(0.7f), // takes 70% of parent width
+//                    visualTransformation = PasswordVisualTransformation(),
+//                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+//                )
+//
+//                Spacer(modifier = Modifier.fillMaxHeight(0.10f))
+//
+//
+//                Button(
+//                    onClick = { },
+//                    modifier = Modifier
+//                        .fillMaxWidth(0.7f)
+//                        .fillMaxHeight(0.25f),
+//                    colors = ButtonDefaults.buttonColors(containerColor = Color.Blue)
+//                ) {
+//                    Text("Login", color = Color.White, fontSize = 20.sp)
+//                }
+//
+//
+//                Spacer(modifier = Modifier.fillMaxHeight(0.10f))
+//
+//
+//                Text(
+//                    text = buildAnnotatedString {
+//                        append("Don't have an account? ")
+//                        withStyle(style = SpanStyle(color = Color.Red)) {
+//                            append("Signup")
+//                        }
+//                    },
+//                    fontSize = 15.sp,
+//                    color = Color.Blue, // default color for the first part
+//                    modifier = Modifier.clickable {
+//                        navigator?.push(RegisterScreen())
+//                    }
+//                )
+//            }
+//        }
+//    }
+//}
+
+
+// working ===============================
+
+package org.example.project
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import cafe.adriel.voyager.core.model.rememberScreenModel
+import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.navigator.LocalNavigator
+import com.mohamedrejeb.calf.picker.toImageBitmap
+
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+
+class LoginScreen : Screen {
+    @Composable
+    override fun Content() {
+        val navigator = LocalNavigator.current
+        val screenModel = rememberScreenModel { RegisterScreenModel() }
+
+        var email by remember { mutableStateOf("") }
+        var password by remember { mutableStateOf("") }
+
+        val studentId = 2L
+        var imageBytes by remember { mutableStateOf<ByteArray?>(null) }
+
+        LaunchedEffect(studentId) {
+            imageBytes = screenModel.loadImageForStudent(studentId)
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFFEFEFEF))
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                
+                
+                // main working code ==================================================================
+
+
+                // Image
+//                if (imageBytes != null) {
+//                    val imageBitmap = imageBytes!!.toImageBitmap()
+//                    Image(
+//                        bitmap = imageBitmap,
+//                        contentDescription = "Student's picture",
+//                        modifier = Modifier
+//                            .size(520.dp)
+//                            .clip(RoundedCornerShape(60.dp))
+//                    )
+//                    Spacer(modifier = Modifier.height(24.dp))
+//                }
+
+
+
+                if (imageBytes != null) {
+                    var imageBitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+                    var isLoading by remember { mutableStateOf(true) }
+
+                    // Decode in background
+                    LaunchedEffect(imageBytes) {
+                        withContext(Dispatchers.Default) {
+                            imageBitmap = imageBytes!!.toImageBitmap()
+                        }
+                        isLoading = false
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(520.dp)
+                            .clip(RoundedCornerShape(60.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Show loader while decoding
+                        if (isLoading) {
+                            CircularProgressIndicator()
+                        }
+
+                        // Display the image when ready
+                        imageBitmap?.let { bitmap ->
+                            Image(
+                                bitmap = bitmap,
+                                contentDescription = "Student's picture",
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+
+
+//                // Card for login fields
+//                Card(
+//                    shape = RoundedCornerShape(16.dp),
+//                    modifier = Modifier.fillMaxWidth(),
+//                    colors = CardDefaults.cardColors(containerColor = Color.White),
+//                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+//                ) {
+//                    Column(
+//                        modifier = Modifier
+//                            .fillMaxWidth()
+//                            .padding(24.dp),
+//                        horizontalAlignment = Alignment.CenterHorizontally
+//                    ) {
+//                        Text(
+//                            text = "Login",
+//                            fontSize = 24.sp,
+//                            color = Color.Black
+//                        )
+//                        Spacer(modifier = Modifier.height(16.dp))
+//
+//                        OutlinedTextField(
+//                            value = email,
+//                            onValueChange = { email = it },
+//                            label = { Text("Email") },
+//                            singleLine = true,
+//                            modifier = Modifier.fillMaxWidth(),
+//                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+//                        )
+//                        Spacer(modifier = Modifier.height(16.dp))
+//
+//                        OutlinedTextField(
+//                            value = password,
+//                            onValueChange = { password = it },
+//                            label = { Text("Password") },
+//                            singleLine = true,
+//                            visualTransformation = PasswordVisualTransformation(),
+//                            modifier = Modifier.fillMaxWidth(),
+//                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+//                        )
+//
+                       Spacer(modifier = Modifier.height(24.dp))
+
+                        Button(
+                            onClick = { /* Handle login */ },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5))
+                        ) {
+                            Text("Login", color = Color.White, fontSize = 18.sp)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text(
+                    text = buildAnnotatedString {
+                        append("Don't have an account? ")
+                        withStyle(style = SpanStyle(color = Color(0xFF1E88E5))) {
+                            append("Sign up")
+                        }
+                    },
+                    fontSize = 16.sp,
+                    modifier = Modifier.clickable {
+                        navigator?.push(RegisterScreen())
+                    }
+                )
+            }
+        }
+
+
+
